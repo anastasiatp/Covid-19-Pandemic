@@ -1,0 +1,341 @@
+---
+title: "The COVID-19 Pandemic, Mask Use, and Vaccinations in Counties Across the United States"
+author: "Anastasia Papadimitriou"
+date: "4/8/2022"
+output: html_document
+---
+
+# **Summary**
+
+This report seeks to provide key findings along with summary statistics about COVID-19 deaths, vaccine administrations, and mask use across counties in the United States. 
+
+Central findings
+
+  * Los Angeles County had the highest number of COVID-19 deaths to date (31,754).
+  * There were 20 counties that had 0 COVID-19 deaths to date, including from states such as Utah, North Dakota, Nebraska, and Colorado. 
+  * Around 7% of counties across the US had a median of 49.7% of the population that wore a mask.
+  * Yates county in NY had the highest percentage of the population that always wore a mask (88.4%). Other high ranking counties came from states such as Texas, Nevada, California, and Massachusetts. 
+  * Valley County in Montana had the lowest percentage of the population that always wore a mask (11.5%). Other low ranking counties came from states such as Missouri.
+  * The highest percentage of counties (around 11%) had a median of 47.6% vaccination rate. 
+  * Santa Cruz county, Chattahoochee county, Arecibo Municipio, Culebra Municipio, and Presidio county had the highest vaccination rates (95%).
+  * Long County in Georgia had the lowest rate of vaccination (8.7%). Other low-ranking counties came from states such as North Dakota. 
+  * Counties with the highest social vulnerability had a median of approximately 48% rate of vaccination.
+  * Counties with the lowest social vulnerability had a median of approximately 52% rate of vaccination.
+  * When both variables are included in the same model, each rate of vaccination increase of 1% results in an average 50.57% decrease in percentage of deaths per 100k, and each increase of 1% in the population that always wore a mask results in an average 44.07% decrease in percentage of deaths per 100k in 2022.
+
+#	**Data and Methodology**
+
+This report looks at data provided by the New York Times (NYT) and the Center for Disease Control (CDC). The data involves the COVID-19 pandemic and resulting deaths, mask use, vaccine equity, and vaccine administration in each county across the United States recorded up until 2022. The data, when combined together, includes 3,220 observations. The [NYT](https://github.com/nytimes/covid-19-data) provided data on COVID-19 deaths according to county, the [CDC](https://data.cdc.gov/Vaccinations/COVID-19-Vaccinations-in-the-United-States-County/8xkx-amqh/data) provided data on vaccine administration and vaccine equity at the county level, and the [CDC](https://drive.google.com/file/d/1Hj7cjMMZDyMjSESDgW206wtfS4A6SuGo/view) additionally provided data on vaccine administration at the county level.
+
+The CDC uses new and current information technology systems to quickly collect data regarding vaccination distribution and administration. The CDC collects data on vaccine administration in the US through state, local, and territorial immunization information systems and the Vaccine Administration Management System (which includes numerous vaccination clinics from all agencies), and direct data submissions to the COVID-19 Data Clearing House.
+
+The NYT has collected data through journalists that monitor news conferences, analyze data releases, and communicate with public officials across the US territorial governments and more than 50 states. In their methodology, a COVID-19 death counts as an individual who died that is categorized as having a confirmed COVID-19 case. When identifying counties, the NYT in some cases combined multiple counties to classify one, resulting in some NA values for the FIPS code variable.
+
+
+```{r setup, include = FALSE}
+# markdown options
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  message = FALSE, warning = FALSE, eval = TRUE, echo = FALSE,
+  fig.align = 'center')
+
+# packages 
+library(tidyverse)
+library(scales)
+library(stargazer)
+library(gt)
+```
+
+
+```{r}
+# create the dataset ------------------
+covidC = read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties-recent.csv') %>%
+    filter(date == max(date), !is.na(fips)) %>%
+    rename(deathsToDate = deaths)
+```
+```{r}
+# latest data on 2022 deaths to date
+  covidT = read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/rolling-averages/us-counties-2022.csv') %>%
+    mutate(fips = str_sub(geoid, -5)) %>% # extract FIPS county code
+    select(fips,deaths) %>%
+    group_by(fips) %>%
+    summarise(deaths2022 = sum(deaths, na.rm = T))  
+```
+
+```{r}
+# estimated mask usage from July 2020 survey
+  mask = read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/mask-use/mask-use-by-county.csv') %>%
+    rename(fips = 'COUNTYFP') # for merging  
+```
+
+```{r}
+# prep CDC data from directory
+  vax = read_csv('CDC vax jan1.csv') %>%
+    filter(FIPS != 'UNK', Recip_State != 'VI', Completeness_pct > 0, 
+           !is.na(Administered_Dose1_Recip)) %>% # drop unknown/incomplete/questionable reports
+    rename(fips = FIPS, population = Census2019)  
+```
+
+```{r, include = FALSE, echo = FALSE}
+# merge  
+  covid =
+    left_join(covidC, mask) %>%
+    left_join(vax) %>%
+    left_join(covidT) %>%
+    mutate(deaths2022Per100k = deaths2022/population * 100000) # scale by population
+
+  summary(covid)
+```
+
+# **1. COVID Deaths Nationally**
+
+```{r}
+# latest data on 2022 deaths to date
+  covidT = read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/rolling-averages/us-counties-2022.csv') %>%
+    mutate(fips = str_sub(geoid, -5)) %>% # extract FIPS county code
+    select(fips,deaths) %>%
+    group_by(fips) %>%
+    summarise(deaths2022 = sum(deaths, na.rm = T))  
+```
+Fig. 1 demonstrates the COVID-19 deaths per county to date. The x-axis represents the number of deaths per county, while the y-axis shows the percentage of counties. The histogram below shows that most of the counties had a median of `r  round(median(covid$deathsToDate, na.rm = T), digits = 2)` COVID-19 deaths. The average COVID-19 deaths to date was approximately `r  round(mean(covid$deathsToDate, na.rm = T), digits = 2)`. 
+
+
+```{r viz 1, fig.width = 7, fig.height = 4, fig.cap = "Fig. 1 Deaths to Date" }
+ covid %>%
+    ggplot(aes(x = deathsToDate)) +
+    geom_histogram(color = 'white',
+                   fill = 'indianred1',
+                   aes(y = stat(width*density))) + 
+    labs(y = "Percentage of Counties", x = "Deaths to Date", title = "COVID-19 Deaths to Date") +
+  scale_x_log10() +
+  scale_y_continuous(labels = label_percent())
+```
+
+
+```{r, include = FALSE, echo = FALSE}
+# stat summary and more
+  summary(covid$deathsToDate)
+  # find some examples?
+```
+
+In the the table below, we can see the top 10 counties with the highest numbers of deaths to date. Los Angeles County (LA) had the highest number of COVID-19 deaths to date, which was 31,754 deaths. This is a significant outlier, as LA's number of deaths is significantly higher than the rest of the top ranking counties. 
+
+```{r}
+covid %>%
+    select(deathsToDate, Recip_State, Recip_County) %>%
+    filter(complete.cases(Recip_County)) %>%
+    filter(complete.cases(deathsToDate %in% c(max(deathsToDate), min(deathsToDate)))) %>% arrange(desc(deathsToDate)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "Top 10 Counties with Highest Deaths to Date") %>% cols_label(
+    deathsToDate = "Deaths to Date",
+    Recip_County = "County", 
+    Recip_State = "State")
+```
+
+```{r, include = FALSE, echo = FALSE}
+table(covid$deathsToDate == 0)
+```
+
+In the the table below, we can see the top 10 counties with the lowest numbers of COVID-19 deaths to date, which was 0. There are an additional 10 counties that had 0 COVID-19 deaths to date.
+
+```{r}
+covid %>%
+    select(deathsToDate, Recip_State, Recip_County) %>%
+    filter(complete.cases(Recip_County)) %>%
+    filter(complete.cases(deathsToDate %in% c(max(deathsToDate), min(deathsToDate)))) %>% arrange(-desc(deathsToDate)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "Top 10 Counties with Lowest Deaths to Date") %>% cols_label(
+    deathsToDate = "Deaths to Date",
+    Recip_County = "County",
+    Recip_State = "State")
+```
+
+# **2. Estimated Rates of Mask Use: What Percentage of the Population “Always” Wore a Mask?**
+
+```{r}
+# estimated mask usage from July 2020 survey
+  mask = read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/mask-use/mask-use-by-county.csv') %>%
+    rename(fips = 'COUNTYFP') # for merging  
+```
+
+Fig. 2 demonstrates a histogram of the percentage of the population that always wore a mask. The x-axis represents the percentage of the population that always wore a mask, and the y-axis shows the percentage of counties. Approximately 7 percent of the counties had a median of `r  round(median(covid$ALWAYS*100, na.rm = T), digits = 2)` percent of the population that always wore a mask. The mean population that always wore a mask is `r round( mean(covid$ALWAYS*100, na.rm = T), digits = 2)` percent. 
+
+```{r, include = FALSE, echo = FALSE}
+summary(covid$ALWAYS*100)
+```
+
+```{r viz 2, fig.width = 7, fig.height = 4, fig.cap = "Fig. 2 Always Wore a Mask"}
+# VIZ 2 "Always wears a mask"
+  covid %>%
+    ggplot(aes(x = ALWAYS)) +
+    geom_histogram(color = 'white', 
+                   fill = 'indianred1',
+                   aes(y = stat(width*density))) + 
+  scale_x_continuous(labels = label_percent()) +
+  scale_y_continuous(labels = label_percent()) +
+  labs(y = "Percentage of Counties", 
+       x = "Percentage of Population that Always Wore a Mask",
+       title = "Percentage of the Population that “Always” Wore a Mask") +
+  theme_minimal() + 
+  theme(panel.grid.major.y = element_line(color = 'gray90')
+	)
+```
+
+```{r, include = FALSE, echo = FALSE}
+# helpers
+  summary(covid$ALWAYS)
+  # find hi/lo counties?
+```
+
+In the table below, we can see the top 10 counties that had the highest percentage of the population that always wore a mask. Yates County had the highest percentage of the population that always wore a mask (88.4%).
+
+```{r}
+covid %>%
+    select(ALWAYS, Recip_State, Recip_County) %>%
+    filter(complete.cases(Recip_County)) %>%
+    filter(complete.cases(ALWAYS %in% c(max(ALWAYS), min(ALWAYS)))) %>% arrange(desc(ALWAYS)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "Top 10 Counties that Always Wore a Mask") %>% cols_label(
+    ALWAYS = "Always Wore a Mask",
+    Recip_County = "County", 
+    Recip_State = "State")
+  
+```
+
+In the table below, we can see the top 10 counties with the lowest percentage of the population that always wore a mask. Valley County has the lowest percentage of the population that always wore a mask (11.5%). 
+
+```{r}
+covid %>%
+    select(ALWAYS, Recip_State, Recip_County) %>%
+    filter(complete.cases(ALWAYS %in% c(max(ALWAYS), min(ALWAYS)))) %>% arrange(-desc(ALWAYS)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "10 Lowest Counties that Always Wore a Mask") %>% cols_label(
+    ALWAYS = "Always Wore a Mask",
+    Recip_County = "County",
+    Recip_State = "State"
+  )
+```
+
+# **3. Rates of vaccination**
+
+```{r}
+# prep CDC data from directory
+  vax = read_csv('CDC vax jan1.csv') %>%
+    filter(FIPS != 'UNK', Recip_State != 'VI', Completeness_pct > 0, 
+           !is.na(Administered_Dose1_Recip)) %>% # drop unknown/incomplete/questionable reports
+    rename(fips = FIPS, population = Census2019)  
+```
+
+In Fig. 3 below, we can see a histogram representing the rate of vaccinations across counties. The x-axis represents the rates of vaccination by a percentage, and the y -axis represents the percentage of counties. The highest percentage of counties (around 11 percent) had a median of a `r round( median(covid$Series_Complete_Pop_Pct, na.rm = T), digits = 2)` percent vaccination rate, and the mean vaccination rate is `r  round(mean(covid$Series_Complete_Pop_Pct, na.rm = T), digits = 2)` percent, which is very close to the median. 
+
+```{r, include = FALSE, echo = FALSE}
+summary(covid$Series_Complete_Pop_Pct)
+```
+
+```{r viz 3, fig.width = 7, fig.height = 4, fig.cap = "Fig. 3 Vaccination Rates"}
+# VIZ 3: overall vax rates
+  covid %>%
+    ggplot(aes(x = Series_Complete_Pop_Pct/100)) +
+    geom_histogram(color = 'white', fill = 'indianred1', 
+                   boundary = 10, 
+                   closed = 'left',
+                   aes(y = stat(width*density))) + 
+  scale_x_continuous(labels = label_percent()) +
+  scale_y_continuous(labels = label_percent()) +
+  labs(title = "Rates of Vaccination Across Counties", 
+       y = "Percentage of Counties", 
+       x = "Rates of Vaccination") +
+  theme_minimal() + 
+  theme(panel.grid.major.y = element_line(color = 'gray90'))
+```
+
+Fig. 4 below demonstrates a box plot representing vaccination rates by the Social Vulnerability Index. On the x-axis lies the social vulnerability index, categorized by A, B, C, and D. "A" represents 0-0.25, "B" represents 0.2501-0.50, "C" represents 0.5001-0.75, and "D" represents 0.7501-1.0. These values show the county's overall percentile rank, with 0 being the lowest social vulnerability and 1 being the highest social vulnerability. The y-axis shows the vaccination rate in percent. We can see that counties with the highest social vulnerability (D) had a median of approximately 48% rate of vaccination, with a maximum of around 52% and minimum of around 40%. Counties with the lowest social vulnerability (A) had a median of approximately 52% rate of vaccination, with a maximum of around 60% and a minimum of around 48%. Counties ranking B and C have medians falling in between 48% and 52% rate of vaccination. In each social vulnerability category, there are several vaccination rate outliers on the low and high ends. 
+
+```{r viz 4, fig.width = 7, fig.height = 4, fig.cap = "Fig. 4 Vaccination Rates by SV Index"}
+# VIZ 4: vax rates by Social Vulnerability Index category
+  covid %>%
+  filter(complete.cases(SVI_CTGY)) %>%
+    ggplot(aes(y = Series_Complete_Pop_Pct/100, x = SVI_CTGY, color = SVI_CTGY), show.legend = FALSE) +
+    geom_boxplot() + scale_y_continuous(labels = label_percent()) + labs(title = "Rate of Vaccination by Social Vulnerability Index", y = "Rate of Vaccination", x = "Social Vulnerability Index") + 
+  scale_color_manual(values = c( "indianred1", "indianred2", "indianred3", "indianred4")) +
+  theme_minimal() # drop the NA category; it's awful
+```
+
+In the table below, we can see that Santa Cruz county, Chattahoochee county, Arecibo Municipio, Culebra Municipio, and Presidio county had the highest vaccination rates (95%).
+
+```{r}
+# find high
+covid %>%
+    select(Series_Complete_Pop_Pct,Recip_State,Recip_County) %>%
+    filter(complete.cases(Series_Complete_Pop_Pct %in% c(max(Series_Complete_Pop_Pct), min(Series_Complete_Pop_Pct)))) %>% arrange(desc(Series_Complete_Pop_Pct)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "Top 10 Counties with Highest Rates of Vaccination") %>%
+  cols_label(
+    Series_Complete_Pop_Pct = "Rate of Vaccination",
+    Recip_County = "County",
+    Recip_State = "State")
+#filter NAS
+```
+
+In the table below, we can see that Long County had the lowest rate of vaccination (8.7%).
+
+``` {r}
+#low
+covid %>%
+    select(Series_Complete_Pop_Pct,Recip_State,Recip_County) %>%
+    filter(complete.cases(Series_Complete_Pop_Pct %in% c(max(Series_Complete_Pop_Pct), min(Series_Complete_Pop_Pct)))) %>% arrange(-desc(Series_Complete_Pop_Pct)) %>%
+  head(10) %>%
+  gt() %>%
+  tab_header(title = "Top 10 Counties with Lowest Rates of Vaccination") %>%
+  cols_label(
+    Series_Complete_Pop_Pct = "Rate of Vaccination",
+    Recip_County = "County",
+    Recip_State = "State")
+
+```
+
+# **4. Impact of Mask Use and Vaccination on 2022 COVID Deaths**
+
+```{r, include = FALSE, echo = FALSE}
+# merge  
+  covid =
+    left_join(covidC, mask) %>%
+    left_join(vax) %>%
+    left_join(covidT) %>%
+    mutate(deaths2022Per100k = deaths2022/population * 100000) # scale by population
+
+  summary(covid)
+```
+
+Through Fig. 5, we can look at some of the impacts of mask use and vaccination on 2022 COVID Deaths. There is statistical significance across all models. For example, when the percentage of the population that always wore a mask increases by 1%, the average percentage of deaths per 100k in 2022 decreases by 61.68%. When the rate of vaccination increases by 1%, the average percentage of deaths per 100k in 2022 decreases by 66.03%. When both variables are included in the same model, each rate of vaccination increase of 1% results in an average 50.57% decrease in percentage of deaths per 100k, and each increase of 1% in the population that always wore a mask results in an average 44.07% decrease in percentage of deaths per 100k in 2022.
+
+```{r}
+covid2 = covid%>% 
+  mutate (Series_Complete_Pop_Pct = Series_Complete_Pop_Pct/100) %>%
+  select(Series_Complete_Pop_Pct, population, state, ALWAYS, deaths2022Per100k)
+```
+
+```{r reg, echo = FALSE, results = 'asis', fig.width = 7, fig.height = 4, fig.cap = "Fig. 5 Impact of Mask Use and Vaccination Rate"}
+# regression estimates
+  m1 = lm(deaths2022Per100k ~ ALWAYS + population + state, data = covid2) # masks
+  m2 = lm(deaths2022Per100k ~ Series_Complete_Pop_Pct + population + state, data = covid2) # vax
+  m3 = lm(deaths2022Per100k ~ ALWAYS + Series_Complete_Pop_Pct + population + state, data = covid2) # both  
+
+# TAB: regression table
+  stargazer::stargazer(
+    m1, m2, m3,
+    keep.stat = 'n', omit = 'state',
+    type = 'html', 
+    digits = 2, 
+    dep.var.labels = "Deaths Per 100k in 2022",
+    covariate.labels = c("Aways Wore a Mask", "Vaccination Rate", "Population"),
+    add.lines = list(c('State fixed effects','Yes','Yes','Yes')
+                     ))  
+```
+
+

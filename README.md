@@ -7,5 +7,5 @@ Live Site URL and Status:
 
 https://github.com/anastasiatp/Covid-19-Pandemic
 
-# Women in US Films - By Anastasia Papadimitriou
+
 
